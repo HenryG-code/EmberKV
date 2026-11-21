@@ -19,8 +19,8 @@ stop-dev:
 	@echo "stop-dev is not implemented yet" >&2; exit 1
 
 # Format check, lint and all unit and integration tests
-test:
-	@echo "test is not implemented yet" >&2; exit 1
+test: lint
+	cargo test --workspace --locked
 
 # Kill the server repeatedly during writes and check every confirmed write survives
 crash-test:
@@ -32,4 +32,5 @@ bench:
 
 # Run cargo fmt --check and cargo clippy
 lint:
-	@echo "lint is not implemented yet" >&2; exit 1
+	cargo fmt --all --check
+	cargo clippy --workspace --all-targets --locked -- -D warnings
