@@ -109,6 +109,17 @@ code ~/projects/emberkv
 To browse the files from Windows File Explorer, use `\\wsl.localhost\Ubuntu\home\<user>\projects\emberkv`.
 Edit them only through VS Code in WSL mode.
 
+## Checking your work
+
+```bash
+make test     # format check, Clippy with warnings as errors, then every test in the workspace
+make lint     # only the format check and Clippy
+cargo fmt     # fix formatting automatically
+```
+
+CI runs the same `make test` on every pull request, plus `cargo deny` and a secret scan, so a green
+`make test` locally should mean a green pull request.
+
 ## Daily workflow
 
 ```bash

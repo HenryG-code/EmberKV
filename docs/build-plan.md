@@ -378,7 +378,7 @@ architecture document and changelog, and tag `v0.1.0`.
 | Slice | Status | Evidence |
 |---|---|---|
 | 0 Feasibility prototype | Done, process crashes on WSL2 | [Gates](feasibility.md), [results](benchmarks/2026-11-21-slice0-wsl2.md), ADR [0001](adr/0001-log-structured-hash-table.md) and [0002](adr/0002-record-format.md) |
-| 1 Workspace skeleton and CI | Not started | |
+| 1 Workspace skeleton and CI | In review | `make test` green locally; CI runs on the pull request; [ADR 0005](adr/0005-dependency-policy.md) |
 | 2 Record encoding | Not started | |
 | 3 Log segments and recovery | Not started | |
 | 4 Storage engine | Not started | |

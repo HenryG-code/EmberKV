@@ -1,0 +1,5 @@
+# Everyone, including CI, builds with exactly this Rust version. Change it deliberately, in its own PR.
+[toolchain]
+channel = "1.100.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

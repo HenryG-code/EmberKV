@@ -1,0 +1,25 @@
+# The workspace: one Cargo.lock, one target/ folder and shared settings for every crate in crates/.
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+# The slice 0 programs are standalone throwaway projects, not part of the product.
+exclude = ["prototypes"]
+
+# Values each crate can inherit with `version.workspace = true` and so on.
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.100"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/HenryG-code/EmberKV"
+publish = false
+
+# Rules every crate opts into with `[lints] workspace = true`.
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+# Data from disk or the network must be handled, never unwrapped. Tests may unwrap (see clippy.toml).
+unwrap_used = "warn"
+expect_used = "warn"

@@ -14,6 +14,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   file-replacement crash tests, index memory measurement, and a writer that stops on a failed flush.
   All eight feasibility gates pass for process crashes on ext4 in WSL2.
 - ADR 0001 (log-structured hash table) and ADR 0002 (record format with header and body checksums).
+- Cargo workspace with `emberkv-storage`, `emberkv-server` (binary `emberkv`) and `emberkv-cli`, pinned
+  Rust 1.100.0, Clippy pedantic lints, `make test` and `make lint`, and CI: format, lint and tests,
+  `cargo deny` for licences and advisories, and a Gitleaks secret scan. ADR 0005 (dependency policy).
 
 ### Fixed
 

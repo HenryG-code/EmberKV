@@ -1,0 +1,6 @@
+# Tests may unwrap: a panic there is a test failure, which is what we want.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+
+# Words in doc comments that look like code but are names. ".." keeps Clippy's built-in list.
+doc-valid-idents = ["EmberKV", ".."]
