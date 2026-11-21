@@ -1,3 +1,0 @@
-Building release versions...
-
-runs: 500  passed: 500  failed: 0  acknowledged writes checked: 184019886

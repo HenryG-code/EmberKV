@@ -12,8 +12,11 @@ echo "Building release versions..."
 cargo build --release --quiet --manifest-path "$HERE/writer/Cargo.toml"
 cargo build --release --quiet --manifest-path "$HERE/checker/Cargo.toml"
 
-WORK="$(mktemp -d)"                    # a fresh temporary folder for the test files
-trap 'rm -rf "$WORK"' EXIT             # delete it when the script ends, however it ends
+# Work on the real disk next to this script, NOT /tmp (which is tmpfs, held in RAM).
+mkdir -p "$HERE/crash-runs"
+WORK="$(mktemp -d -p "$HERE/crash-runs")"
+trap 'rm -rf "$WORK"' EXIT
+echo "Testing on: $(df -T "$WORK" | awk 'NR==2 {print $2}') filesystem"
 
 passed=0
 failed=0
