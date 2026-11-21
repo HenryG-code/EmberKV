@@ -257,4 +257,35 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn a_failed_flush_leaves_the_index_alone_and_stops_writes() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = open(dir.path());
+        engine.set(b"k".to_vec(), b"acknowledged".to_vec()).unwrap();
+
+        engine.writer.lock().unwrap().fail_next_sync = true;
+        assert!(engine.set(b"k".to_vec(), b"failed".to_vec()).is_err());
+        assert_eq!(
+            engine.get(b"k").unwrap(),
+            Some(b"acknowledged".to_vec()),
+            "a write that failed must not be visible"
+        );
+        assert!(matches!(
+            engine.set(b"other".to_vec(), b"v".to_vec()),
+            Err(EngineError::Write(WriteError::Stopped))
+        ));
+        drop(engine);
+
+        // After a restart, recovery decides. The failed write reached the file before its flush
+        // "failed", so it may come back: a failed write is uncertain, never half-applied.
+        let engine = open(dir.path());
+        let value = engine.get(b"k").unwrap();
+        assert!(value == Some(b"acknowledged".to_vec()) || value == Some(b"failed".to_vec()));
+        assert_eq!(
+            engine.get(b"other").unwrap(),
+            None,
+            "the refused write never happened"
+        );
+    }
 }

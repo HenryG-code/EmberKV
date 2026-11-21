@@ -49,6 +49,10 @@ pub struct Log {
     config: LogConfig,
     active: SegmentWriter,
     stopped: bool,
+    /// Tests set this to make the next flush fail, as a dying disk would. Not compiled into the
+    /// real program.
+    #[cfg(test)]
+    pub(crate) fail_next_sync: bool,
     /// Held only so the lock lasts as long as the `Log`. The operating system releases it when the
     /// file is closed, including when the process is killed.
     _lock: File,
@@ -95,6 +99,8 @@ impl Log {
             config,
             active,
             stopped: false,
+            #[cfg(test)]
+            fail_next_sync: false,
             _lock: lock,
         };
         Ok((log, report))
@@ -129,6 +135,11 @@ impl Log {
     pub fn sync(&mut self) -> Result<(), WriteError> {
         if self.stopped {
             return Err(WriteError::Stopped);
+        }
+        #[cfg(test)]
+        if self.fail_next_sync {
+            self.stopped = true;
+            return Err(WriteError::Io(io::Error::other("simulated flush failure")));
         }
         self.active.sync()
     }
