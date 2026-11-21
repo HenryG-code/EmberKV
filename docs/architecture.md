@@ -41,7 +41,7 @@ simplest design in which every durability mechanism still appears.
 | Fast reads | An in-memory index from each key to the position of its newest record on disk | ADR 0001 |
 | Detecting damage | Separate header and body checksums on every record | ADR 0002 |
 | One writer at a time | A mutex around the log; the index updated only after the flush | ADR 0003 |
-| Wire protocol | A subset of the Redis protocol (RESP2), so `redis-cli` works | ADR 0004 (planned) |
+| Wire protocol | A subset of the Redis protocol (RESP2), so `redis-cli` works | ADR 0004 |
 | Dependencies | Few, justified, checked in CI | ADR 0005 |
 | What recovery accepts | Only damage a crash can cause; everything else stops startup | ADR 0006 |
 | Size limits | Configured limits for new writes; a fixed format maximum for reading old data | ADR 0007 |
@@ -71,8 +71,8 @@ Cargo workspace:
 | Crate | Responsibility | State |
 |---|---|---|
 | `emberkv-storage` | Record format, segments, recovery, log, engine; later compaction. No networking | Slices 2 to 4 built |
-| `emberkv-server` | Tokio TCP server, protocol parsing, limits, metrics | Placeholder, slice 5 |
-| `emberkv-cli` | A small client used by humans and by the crash-test harness | Placeholder, slice 5 |
+| `emberkv-server` | Tokio TCP server, protocol parsing, limits; later metrics | Slice 5 built |
+| `emberkv-cli` | A small blocking client for one command at a time | Slice 5 built |
 
 Modules of `emberkv-storage`, lowest first. Each uses only the ones above it in this list:
 
@@ -83,6 +83,23 @@ Modules of `emberkv-storage`, lowest first. Each uses only the ones above it in 
 | `recovery` | Read every segment at startup, cut a torn tail in the newest one, refuse any other damage |
 | `log` | The data folder: lock, recovery on open, appending and rolling over to new segments |
 | `engine` | The key-value store: index, flushed writes, checked reads |
+
+Modules of `emberkv-server`, a library with a thin `emberkv` program on top:
+
+| Module | Job |
+|---|---|
+| `resp` | Parse requests from whatever bytes have arrived: a command, "need more", or an error |
+| `command` | Run one command against the engine and produce one reply. Synchronous |
+| `reply` | Encode replies, removing line breaks from error text |
+| `server` | Accept connections, one task each; limits; graceful shutdown |
+
+**Connections.** One Tokio task per connection reads into a buffer, answers every complete command in it
+(so pipelined requests work), then waits for more bytes. Engine calls run in `spawn_blocking`, because a
+write waits for the disk flush and must not stall the async threads (ADR 0003). Limits: 1,024
+connections (a semaphore), 4 MiB of unfinished request per connection, and 5 minutes idle. **Shutdown**
+(Ctrl+C or SIGTERM) stops accepting, tells every connection through a `watch` channel to stop at its
+next pause between commands, so a command that started always finishes and is answered, and waits up
+to 10 seconds for them.
 
 The storage crate can be tested without a network, which is what makes the crash and property tests
 practical.

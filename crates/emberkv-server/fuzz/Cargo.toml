@@ -1,0 +1,25 @@
+[package]
+name = "emberkv-server-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.emberkv-server]
+path = ".."
+
+# Its own workspace, so the main workspace never builds the fuzzer.
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "parse"
+path = "fuzz_targets/parse.rs"
+test = false
+doc = false
+bench = false

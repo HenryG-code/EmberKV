@@ -11,6 +11,8 @@ Initial draft. Update it as the implementation takes shape.
 | Unauthenticated network access | Listen on localhost only by default. Any wider binding requires an explicit setting and a documented password option |
 | Memory exhaustion through huge keys, values or requests | Limits checked before allocating, while reading the request |
 | Connection floods | A maximum connection count and idle timeouts |
+| A web page using the browser to send commands to localhost (cross-protocol scripting) | Inline requests starting with `POST` or `Host:` close the connection before any line is run, as Redis does. Found by opening the server in a browser during slice 5 |
+| A slow or unfinished request holding memory | Each connection's buffered request is capped (4 MiB by default) and the connection is closed past it |
 | Disk filling | A free-space floor that refuses writes before the disk is full, reported as an error |
 | Malformed protocol input crashing the server | Parser fuzz tests; errors end the request, not the process |
 | Tampered or corrupted data files | Checksums on every record; damage outside the log tail stops startup |

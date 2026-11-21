@@ -381,8 +381,8 @@ architecture document and changelog, and tag `v0.1.0`.
 | 1 Workspace skeleton and CI | Done | Merged in #5, CI green; [ADR 0005](adr/0005-dependency-policy.md) |
 | 2 Record encoding | In review | 15 storage tests including 5 property tests; [fuzz run](benchmarks/2026-11-21-slice2-fuzz.md): 46 million inputs, 0 crashes |
 | 3 Log segments and recovery | Done | 500 crashes on ext4, no acknowledged write lost ([results](benchmarks/2026-11-21-slice3-crash.md)); [ADR 0006](adr/0006-recovery-rules.md) |
-| 4 Storage engine | In review | 34 unit tests; model-based test against a `BTreeMap` with restarts; failed-flush test; mutation checks caught; [ADR 0003](adr/0003-writer-model.md) |
-| 5 Server and protocol | Not started | |
+| 4 Storage engine | Done | 34 unit tests; model-based test against a `BTreeMap` with restarts; failed-flush test; mutation checks caught; [ADR 0003](adr/0003-writer-model.md) |
+| 5 Server and protocol | In review | 11 socket tests, including 100 concurrent clients, a browser attack, limits and graceful shutdown; parser fuzzing; [ADR 0004](adr/0004-wire-protocol.md) |
 | 6 Compaction | Not started | |
 | 7 Crash harness and observability | Not started | |
 | 8 Benchmarks and first release | Not started | |
