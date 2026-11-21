@@ -17,7 +17,8 @@ filesystem used.
       against 23 of 30 for in-place rewriting, process crashes only. See [results](benchmarks/2026-11-21-slice0-wsl2.md).
 - [x] Throughput measured with a flush on every write and without, so the cost of durability is known:
       611 against 1.9 million records per second on WSL2, see [results](benchmarks/2026-11-21-slice0-wsl2.md)
-- [ ] Memory used by the index measured per million keys, to state the design's key-count limit
+- [x] Memory used by the index measured per million keys, to state the design's key-count limit:
+      about 95 bytes per 16-byte key, roughly 11 million keys per GB. See [results](benchmarks/2026-11-21-slice0-wsl2.md)
 - [ ] A simulated flush failure stops all further writes instead of retrying (see [research](research.md), section 2)
 
 A `kill -9` loop proves the record format and recovery, not power-loss durability. Power-loss testing
