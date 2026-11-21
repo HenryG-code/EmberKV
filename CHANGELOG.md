@@ -22,6 +22,11 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   returning a record, a clean end, a torn tail or classified corruption, with every length checked
   before any allocation. Unit tests, property tests and a fuzz target.
 
+- Segment files with a writer that stops on any disk error, recovery that cuts a torn tail only at the
+  end of the newest segment and refuses any other damage, and a `Log` with a folder lock and segment
+  rollover. A crash test kills a writer process at random and checks every acknowledged write.
+  ADR 0006 (recovery rules).
+
 ### Fixed
 
 - A damaged length field was mistaken for a torn tail, which would have discarded valid records. Records
