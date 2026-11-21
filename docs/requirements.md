@@ -45,9 +45,13 @@ power loss on hardware that ignores flush requests.
 ## Acceptance tests
 
 - [ ] A property test of random `SET` and `DELETE` sequences matches an in-memory model after every restart
-- [ ] Killing the process at random points during writes, hundreds of times, never loses an acknowledged write
-- [ ] A truncated or bit-flipped final record is detected, discarded and reported, and earlier records survive
-- [ ] A corrupted record before the end of the log stops startup with a clear error rather than silently skipping data
+- [x] Killing the process at random points during writes, hundreds of times, never loses an acknowledged write
+      (slice 3 crash test: [500 crashes](benchmarks/2026-11-21-slice3-crash.md); 20 in CI)
+- [x] A truncated final record is detected, discarded and reported, and earlier records survive (recovery
+      tests). A **bit-flipped** record, even the last one, is complete but damaged, so it stops startup
+      instead of being discarded: see ADR 0006, and the next item
+- [x] A corrupted record before the end of the log stops startup with a clear error rather than silently skipping data
+      (recovery tests)
 - [ ] A crash at any step of compaction leaves every live key readable after restart
 - [ ] Oversized keys, values and requests are rejected without memory growing beyond the documented bound
 - [ ] Several concurrent clients writing different keys all read back their own acknowledged values

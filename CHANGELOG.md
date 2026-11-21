@@ -27,8 +27,15 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   rollover. A crash test kills a writer process at random and checks every acknowledged write.
   ADR 0006 (recovery rules).
 
+- `Engine` with `get`, `set`, `delete` and `exists`: an in-memory index rebuilt by recovery, writes that
+  return only after their flush, the index updated only after a successful flush, and reads that check
+  every record. A model-based test compares it with a `BTreeMap` through random operations and
+  restarts. ADR 0003 (one writer behind a lock).
+
 ### Fixed
 
+- A new data folder's name was not flushed, so after a power cut the whole folder could vanish. Its
+  parent folder is now flushed when it is created. Segment numbers can no longer wrap around.
 - A damaged length field was mistaken for a torn tail, which would have discarded valid records. Records
   now carry a separate header checksum that is verified before the length is used.
 - Review fixes in the prototype: the writer rejects a length that does not fit in 32 bits instead of
