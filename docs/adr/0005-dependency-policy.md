@@ -28,15 +28,17 @@ Option 3.
 - **`Cargo.lock` is committed**, and the build uses `--locked`, so CI builds exactly what was reviewed.
 - **The Rust version is pinned** in `rust-toolchain.toml` and changed only in its own pull request.
 
-## Current dependencies
+## Dependencies
 
-None yet: slice 1 is an empty workspace. Planned additions, each justified here when its slice adds it:
+Added so far, and planned. `proptest-state-machine` was planned for slice 4 but not needed: a list of
+random operations and a loop do the same job with no extra crate.
 
 | Crate | Slice | Used in | Why |
 |---|---|---|---|
 | `crc32c` | 2 | storage | Hardware CRC-32C; tested in the feasibility prototype |
 | `thiserror` | 2 | storage | Typed errors without hand-written boilerplate |
-| `proptest`, `proptest-state-machine` | 2, 4 | tests only | Property and model-based tests |
+| `proptest` | 2 | tests only | Property tests, and the model-based engine test (slice 4) |
+| `tempfile` | 3 | tests only | Temporary folders that are removed after each test |
 | `tokio` | 5 | server | TCP server, channels and signals |
 | `tracing`, `tracing-subscriber` | 7 | server | Structured logs |
 

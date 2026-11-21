@@ -37,11 +37,14 @@ simplest design in which every durability mechanism still appears.
 
 | Problem | Approach | Decision |
 |---|---|---|
-| Fast, safe writes | Append each change to the end of a log file and flush before acknowledging | ADR 0001 (planned) |
-| Fast reads | An in-memory index from each key to the position of its newest record on disk | ADR 0001 (planned) |
-| Detecting damage | A checksum on every record | ADR 0002 (planned) |
-| Disk growing forever | Compaction rewrites only live records into a new segment | ADR 0003 (planned) |
-| Wire protocol | A small text protocol, possibly a subset of Redis's so standard tools work | ADR 0004 (planned) |
+| Fast, safe writes | Append each change to the end of a log file and flush before acknowledging | ADR 0001 |
+| Fast reads | An in-memory index from each key to the position of its newest record on disk | ADR 0001 |
+| Detecting damage | Separate header and body checksums on every record | ADR 0002 |
+| One writer at a time | A mutex around the log; the index updated only after the flush | ADR 0003 |
+| Wire protocol | A subset of the Redis protocol (RESP2), so `redis-cli` works | ADR 0004 (planned) |
+| Dependencies | Few, justified, checked in CI | ADR 0005 |
+| What recovery accepts | Only damage a crash can cause; everything else stops startup | ADR 0006 |
+| Disk growing forever | Compaction rewrites only live records into a new segment | Planned, slice 6 |
 
 **Rejected for the first release:** a B-tree (much more code before anything is durable) and an LSM
 tree (sorted runs and merging add complexity that this project does not need yet). Both are worth
@@ -62,13 +65,23 @@ flowchart TB
     compact --> engine
 ```
 
-Planned Cargo workspace:
+Cargo workspace:
 
-| Crate | Responsibility |
+| Crate | Responsibility | State |
+|---|---|---|
+| `emberkv-storage` | Record format, segments, recovery, log, engine; later compaction. No networking | Slices 2 to 4 built |
+| `emberkv-server` | Tokio TCP server, protocol parsing, limits, metrics | Placeholder, slice 5 |
+| `emberkv-cli` | A small client used by humans and by the crash-test harness | Placeholder, slice 5 |
+
+Modules of `emberkv-storage`, lowest first. Each uses only the ones above it in this list:
+
+| Module | Job |
 |---|---|
-| `emberkv-storage` | Record format, segments, index, recovery, compaction. No networking |
-| `emberkv-server` | Tokio TCP server, protocol parsing, limits, metrics |
-| `emberkv-cli` | A small client used by humans and by the crash-test harness |
+| `record` | Encode a record to bytes; decode bytes into a record, a clean end, a torn tail or classified corruption |
+| `segment` | Numbered segment files, `Location`, and a writer that stops for good after any disk error |
+| `recovery` | Read every segment at startup, cut a torn tail in the newest one, refuse any other damage |
+| `log` | The data folder: lock, recovery on open, appending and rolling over to new segments |
+| `engine` | The key-value store: index, flushed writes, checked reads |
 
 The storage crate can be tested without a network, which is what makes the crash and property tests
 practical.
@@ -100,9 +113,15 @@ treated as corruption. This also covers the rare case where a damaged length sti
 **Segments:** the log is split into numbered files. Exactly one, the newest, is open for appends. When
 it reaches a size limit it is flushed, closed and becomes read-only, and a new one starts.
 
-**Index:** an in-memory ordered map from key to segment number, offset and length. Being ordered keeps
-range scans possible later. Every key lives in memory, so the number of keys is limited by RAM; this is
-a documented trade-off of the design.
+**Index:** an in-memory `BTreeMap` from each live key to its `Location`: segment number, byte offset and
+record length (24 bytes; `len` is a `u64` to avoid any narrowing conversion). Being ordered keeps range
+scans possible later. Every key lives in memory, so the number of keys is limited by RAM: about 95 bytes
+per 16-byte key measured in slice 0, a little more now that `Location` is 24 bytes.
+
+**Data folder:** segments `000001.log`, `000002.log` and so on, plus a `LOCK` file held with an exclusive
+operating-system lock while the database is open. The lock is released automatically when the process
+exits or is killed. A new data folder, and each new segment, has its parent folder flushed so the new
+name itself survives a power cut.
 
 ## 7. Runtime view
 
@@ -110,31 +129,47 @@ a documented trade-off of the design.
 
 ```mermaid
 sequenceDiagram
-    participant C as Client
-    participant S as Server
-    participant W as Writer task
+    participant C as Caller
+    participant E as Engine
+    participant L as Log (writer lock)
     participant D as Disk
-    C->>S: SET key value
-    S->>W: Append request
-    W->>D: Write record to active segment
-    W->>D: Flush file data to disk
-    W->>W: Update index
-    W-->>S: Done
-    S-->>C: OK
+    participant I as Index (read-write lock)
+    C->>E: set(key, value)
+    E->>L: lock
+    L->>D: append record to the active segment
+    L->>D: flush
+    E->>I: write lock, insert key -> location
+    E->>L: unlock
+    E-->>C: Ok
 ```
 
-One writer task owns the active segment, so appends never interleave. Readers use the index and read
-closed or active segments at known offsets without blocking the writer for long.
+Only one writer holds the log's lock, so appends never interleave, and index updates happen in the same
+order as the log. The index is updated **only after the flush succeeds**, so no reader can see a value
+that is not on disk. If the flush fails, the caller gets an error, the index is unchanged, and the log
+refuses all further writes until a restart (ADR 0003). Locks are always taken in the same order, log
+then index, so they cannot deadlock.
 
-### 7.2 Recovery at startup
+### 7.2 Read
+
+1. Take the index's read lock just long enough to copy the key's `Location`.
+2. Open the segment, seek to the offset and read exactly `len` bytes, with no lock held.
+3. Decode it with the same checks as recovery, and check it is a value for this exact key.
+4. Any failed check returns an error, never wrong data.
+
+A slow flush never blocks a read, and a slow read never blocks a writer.
+
+### 7.3 Recovery at startup
 
 1. List segments in order.
 2. Read each record, check its checksum and rebuild the index.
-3. In the newest segment, a damaged or incomplete final record is the expected result of a crash during
-   a write: truncate it, log what was discarded, and continue.
-4. Damage anywhere else is not explained by a crash. Stop with a clear error rather than guess.
+3. Segment numbers must have no gaps.
+4. In the newest segment, an **incomplete** final record is the expected result of a crash during a write.
+   If no valid record follows it, cut it off, flush the cut, report how many bytes went, and continue.
+5. Anything else stops startup with the segment, byte offset and reason: a complete record that fails a
+   check (even the last one), an incomplete record in an older segment, or valid data after a tear.
+   Nothing on disk is changed. See ADR 0006.
 
-### 7.3 Compaction
+### 7.4 Compaction (planned, slice 6)
 
 1. Pick closed segments to compact. The active segment is never compacted.
 2. Copy only records that the index still points to into a new segment, then flush it.
