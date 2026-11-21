@@ -1,4 +1,4 @@
-//! The EmberKV server. Networking arrives in slice 5.
+//! The `emberkv` program. The server itself lives in the `emberkv_server` library (`lib.rs`).
 
 fn version() -> &'static str {
     env!("CARGO_PKG_VERSION")
