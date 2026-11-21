@@ -92,8 +92,10 @@ the end of the file and report a harmless torn tail, and recovery would then cut
 after it. This was found by experiment in the feasibility prototype. Checking the header first means a
 damaged length is reported as corruption, never mistaken for a crash.
 
-**Recovery rule:** a torn tail is only accepted when it is genuinely at the end of the newest segment and
-no shorter than a damaged write could be. Anything that looks torn elsewhere is treated as corruption.
+**Recovery rule:** a torn tail is only accepted at the end of the newest segment, and only if no valid
+record can be found anywhere after it. A crash can only interrupt the last write, so a valid record
+beyond a supposed tear proves the damage came from somewhere else. Anything else that looks torn is
+treated as corruption. This also covers the rare case where a damaged length still matches its checksum.
 
 **Segments:** the log is split into numbered files. Exactly one, the newest, is open for appends. When
 it reaches a size limit it is flushed, closed and becomes read-only, and a new one starts.
