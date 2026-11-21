@@ -33,6 +33,8 @@ Stop when the slice's "done when" list is met, and tell me what to try by hand.
 
 ## Development environment on Windows
 
+Step-by-step setup and common problems are in [Development setup](development.md). In short:
+
 EmberKV depends on Linux file-flush behaviour and on killing processes with `kill -9`, so **it is
 built and tested inside WSL2 Ubuntu**, not natively on Windows. Windows is where you edit and use the
 browser.
