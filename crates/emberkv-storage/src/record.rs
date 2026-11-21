@@ -426,4 +426,26 @@ mod tests {
             }
         );
     }
+
+    #[test]
+    fn a_torn_second_record_keeps_the_first() {
+        let first = encoded(&put(b"a", b"1"));
+        let len = first.len() as u64;
+        let mut log = first.clone();
+        log.extend(encoded(&put(b"b", b"22")));
+        log.truncate(first.len() + 5); // the crash cut the second record after 5 bytes
+
+        let mut reader = Cursor::new(log);
+        assert_eq!(
+            decode(&mut reader, 0, Limits::default()).unwrap(),
+            Decoded::Record {
+                record: put(b"a", b"1"),
+                len
+            }
+        );
+        assert_eq!(
+            decode(&mut reader, len, Limits::default()).unwrap(),
+            Decoded::TornTail { valid_bytes: len }
+        );
+    }
 }
