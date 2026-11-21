@@ -33,6 +33,8 @@ Stop when the slice's "done when" list is met, and tell me what to try by hand.
 
 ## Development environment on Windows
 
+Step-by-step setup and common problems are in [Development setup](development.md). In short:
+
 EmberKV depends on Linux file-flush behaviour and on killing processes with `kill -9`, so **it is
 built and tested inside WSL2 Ubuntu**, not natively on Windows. Windows is where you edit and use the
 browser.
@@ -164,16 +166,18 @@ pub fn encode(record: &Record, out: &mut Vec<u8>) -> Result<(), EncodeError>;
 pub fn decode(reader: &mut impl Read, offset: u64, limits: &Limits) -> Result<Decoded, io::Error>;
 ```
 
-Layout (little-endian): `crc32c: u32 | key_len: u32 | value_len: u32 | key | value`. A tombstone
-uses `value_len = u32::MAX` and no value bytes. The checksum covers everything after itself.
+Layout (little-endian): `header_crc: u32 | key_len: u32 | value_len: u32 | body_crc: u32 | key | value`.
+A tombstone uses `value_len = u32::MAX` and no value bytes. `header_crc` covers the two lengths and is
+checked before the lengths are used; `body_crc` covers key and value. See the architecture for why a
+single checksum is not enough.
 
 **Tests (`tests/record.rs` and unit tests):**
 
 - Round trip: proptest with random keys and values up to the limits, `decode(encode(r)) == r`.
 - Every truncation point: for one encoded record, cut at each byte length from 1 to its full length
   minus one; every cut returns `TornTail`.
-- Every single-bit flip in the header and body returns `Corrupt` (or, for a length field, `Corrupt`
-  or `TornTail`, never a wrong record).
+- Every single-bit flip in the header and body returns `Corrupt`, including flips in a length field,
+  which must never be reported as `TornTail`.
 - Lengths above the limits return `Corrupt` without allocating. Check with a capped test allocator,
   or by asserting that no `Vec` larger than the limit is created.
 - Fuzz target `fuzz/fuzz_targets/decode.rs` with `cargo fuzz run decode`, run for 10 minutes.
