@@ -78,7 +78,9 @@ fn main() {
 }
 
 fn report(name: &str, count: usize, key_len: usize, before: u64, after: u64) {
-    let used_bytes = (after - before) * 1024;
+    // saturating_sub stops at 0 instead of wrapping: in a release build, plain `after - before`
+    // would wrap to an enormous number if memory use ever went down.
+    let used_bytes = after.saturating_sub(before) * 1024;
     let per_key = used_bytes as f64 / count as f64;
     let raw = key_len + size_of::<Location>();          // NEW: size_of tells you a type's size in bytes
     println!(
