@@ -36,6 +36,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - A new data folder's name was not flushed, so after a power cut the whole folder could vanish. Its
   parent folder is now flushed when it is created. Segment numbers can no longer wrap around.
+- Lowering the configured value or key limit made existing data unreadable: recovery called it
+  corrupt and refused to start. Reading now uses a fixed format maximum; configured limits only apply to
+  new writes (ADR 0007).
 - A damaged length field was mistaken for a torn tail, which would have discarded valid records. Records
   now carry a separate header checksum that is verified before the length is used.
 - Review fixes in the prototype: the writer rejects a length that does not fit in 32 bits instead of

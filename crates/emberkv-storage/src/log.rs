@@ -35,6 +35,9 @@ pub enum OpenError {
     /// Another process has this data folder open.
     #[error("{0} is already in use by another EmberKV process")]
     Locked(PathBuf),
+    /// The configured limits are larger than the on-disk format can be read with.
+    #[error("limits {0:?} exceed the format maximum {max:?}", max = Limits::FORMAT_MAX)]
+    LimitsTooLarge(Limits),
     /// Recovery found damage it will not repair on its own.
     #[error(transparent)]
     Recovery(#[from] RecoveryError),
@@ -64,6 +67,7 @@ impl Log {
     ///
     /// # Errors
     ///
+    /// [`OpenError::LimitsTooLarge`] if `config.limits` exceed [`Limits::FORMAT_MAX`],
     /// [`OpenError::Locked`] if another process holds the folder, [`OpenError::Recovery`] if the
     /// data is damaged in a way a crash cannot explain, [`OpenError::Io`] on a disk error.
     pub fn open(
@@ -71,6 +75,9 @@ impl Log {
         config: LogConfig,
         on_record: impl FnMut(Record, Location),
     ) -> Result<(Log, RecoveryReport), OpenError> {
+        if !config.limits.within_format() {
+            return Err(OpenError::LimitsTooLarge(config.limits));
+        }
         create_dir_durably(dir)?;
         let lock = OpenOptions::new()
             .create(true)
@@ -83,7 +90,9 @@ impl Log {
             Err(TryLockError::Error(error)) => return Err(OpenError::Io(error)),
         }
 
-        let report = recover(dir, config.limits, on_record)?;
+        // Old records are read with the format maximum, not today's configured limits, which only
+        // apply to new writes.
+        let report = recover(dir, Limits::FORMAT_MAX, on_record)?;
         let active = match report.segments.last() {
             Some(&id) => {
                 let file = OpenOptions::new()

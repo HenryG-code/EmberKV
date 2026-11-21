@@ -40,7 +40,6 @@ pub enum EngineError {
 /// A key-value store. Every method takes `&self`, so one `Engine` can be shared between threads.
 pub struct Engine {
     dir: PathBuf,
-    limits: Limits,
     /// Only one writer at a time. Holding this lock also orders index updates the same way as the log.
     writer: Mutex<Log>,
     /// Many readers at a time, or one writer updating it.
@@ -65,7 +64,6 @@ impl Engine {
         })?;
         let engine = Engine {
             dir: dir.to_path_buf(),
-            limits: config.limits,
             writer: Mutex::new(log),
             index: RwLock::new(index),
         };
@@ -159,7 +157,7 @@ impl Engine {
         let mut file = File::open(self.dir.join(segment_file_name(location.segment)))?;
         file.seek(SeekFrom::Start(location.offset))?;
         let mut reader = file.take(location.len);
-        match decode(&mut reader, location.offset, self.limits)? {
+        match decode(&mut reader, location.offset, Limits::FORMAT_MAX)? {
             Decoded::Record { record, len } if len == location.len => Ok(record),
             _ => Err(EngineError::Corrupt(location)),
         }
@@ -172,6 +170,7 @@ mod tests {
     use std::thread;
 
     use super::*;
+    use crate::record::Limits;
 
     fn open(dir: &Path) -> Engine {
         Engine::open(dir, LogConfig::default()).unwrap().0
@@ -287,5 +286,77 @@ mod tests {
             None,
             "the refused write never happened"
         );
+    }
+
+    #[test]
+    fn lowering_the_value_limit_keeps_old_data_readable() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = open(dir.path());
+        engine.set(b"big".to_vec(), vec![7; 100]).unwrap();
+        drop(engine);
+
+        let smaller = LogConfig {
+            limits: Limits {
+                max_key: 1024,
+                max_value: 50,
+            },
+            ..LogConfig::default()
+        };
+        let (engine, _) = Engine::open(dir.path(), smaller).unwrap();
+        assert_eq!(
+            engine.get(b"big").unwrap(),
+            Some(vec![7; 100]),
+            "old data still reads"
+        );
+        assert!(
+            matches!(
+                engine.set(b"new".to_vec(), vec![7; 100]),
+                Err(EngineError::Write(WriteError::Encode(_)))
+            ),
+            "new writes follow the new limit"
+        );
+    }
+
+    #[test]
+    fn limits_beyond_the_format_maximum_are_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let too_big = LogConfig {
+            limits: Limits {
+                max_key: 1024,
+                max_value: Limits::FORMAT_MAX.max_value + 1,
+            },
+            ..LogConfig::default()
+        };
+        assert!(matches!(
+            Engine::open(dir.path(), too_big),
+            Err(OpenError::LimitsTooLarge(_))
+        ));
+    }
+
+    #[test]
+    fn an_invalid_write_is_refused_without_stopping_the_engine() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = open(dir.path());
+        assert!(matches!(
+            engine.set(Vec::new(), b"v".to_vec()),
+            Err(EngineError::Write(WriteError::Encode(_)))
+        ));
+        engine.set(b"k".to_vec(), b"v".to_vec()).unwrap();
+    }
+
+    #[test]
+    fn an_index_entry_pointing_at_another_key_is_corrupt_not_that_keys_value() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = open(dir.path());
+        engine.set(b"a".to_vec(), b"secret-a".to_vec()).unwrap();
+        engine.set(b"b".to_vec(), b"secret-b".to_vec()).unwrap();
+
+        // Simulate an index bug: point "a" at "b"'s record.
+        let mut index = engine.index.write().unwrap();
+        let location_of_b = index[b"b".as_slice()];
+        index.insert(b"a".to_vec(), location_of_b);
+        drop(index);
+
+        assert!(matches!(engine.get(b"a"), Err(EngineError::Corrupt(_))));
     }
 }

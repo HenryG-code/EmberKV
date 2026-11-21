@@ -44,6 +44,7 @@ simplest design in which every durability mechanism still appears.
 | Wire protocol | A subset of the Redis protocol (RESP2), so `redis-cli` works | ADR 0004 (planned) |
 | Dependencies | Few, justified, checked in CI | ADR 0005 |
 | What recovery accepts | Only damage a crash can cause; everything else stops startup | ADR 0006 |
+| Size limits | Configured limits for new writes; a fixed format maximum for reading old data | ADR 0007 |
 | Disk growing forever | Compaction rewrites only live records into a new segment | Planned, slice 6 |
 
 **Rejected for the first release:** a B-tree (much more code before anything is durable) and an LSM
