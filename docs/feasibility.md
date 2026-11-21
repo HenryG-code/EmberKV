@@ -19,7 +19,8 @@ filesystem used.
       611 against 1.9 million records per second on WSL2, see [results](benchmarks/2026-11-21-slice0-wsl2.md)
 - [x] Memory used by the index measured per million keys, to state the design's key-count limit:
       about 95 bytes per 16-byte key, roughly 11 million keys per GB. See [results](benchmarks/2026-11-21-slice0-wsl2.md)
-- [ ] A simulated flush failure stops all further writes instead of retrying (see [research](research.md), section 2)
+- [x] A simulated flush failure stops all further writes instead of retrying (see [research](research.md), section 2):
+      3 tests with a fake disk. See [results](benchmarks/2026-11-21-slice0-wsl2.md)
 
 A `kill -9` loop proves the record format and recovery, not power-loss durability. Power-loss testing
 with dm-flakey on native Ubuntu is a separate, later gate.
