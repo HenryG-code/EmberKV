@@ -1,24 +1,48 @@
 //! Integration tests over real sockets: a server on a random local port, and raw RESP2 bytes sent to it,
 //! exactly as a client would.
 
-#![allow(clippy::unwrap_used)]
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 
+use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Duration;
 
-use emberkv_server::resp::ProtocolLimits;
-use emberkv_server::server::serve;
+use emberkv_server::server::{ServerConfig, serve};
 use emberkv_storage::engine::Engine;
 use emberkv_storage::log::LogConfig;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::oneshot;
+use tokio::task::JoinHandle;
 
-/// Starts a server on a free port and returns its address. The data folder lives as long as `dir`.
-async fn start(dir: &tempfile::TempDir) -> std::net::SocketAddr {
+/// A running test server: its address, a switch to shut it down, and its task.
+struct Running {
+    address: SocketAddr,
+    stop: oneshot::Sender<()>,
+    task: JoinHandle<()>,
+}
+
+/// Starts a server on a free port with `config`. The data folder lives as long as `dir`.
+async fn start_with(dir: &tempfile::TempDir, config: ServerConfig) -> Running {
     let engine = Engine::open(dir.path(), LogConfig::default()).unwrap().0;
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap(); // port 0: the OS picks a free one
     let address = listener.local_addr().unwrap();
-    tokio::spawn(serve(listener, Arc::new(engine), ProtocolLimits::default()));
-    address
+    let (stop, stopped) = oneshot::channel::<()>();
+    let task = tokio::spawn(serve(listener, Arc::new(engine), config, async {
+        let _ = stopped.await;
+    }));
+    Running {
+        address,
+        stop,
+        task,
+    }
+}
+
+/// Starts a server that runs until the test ends.
+async fn start(dir: &tempfile::TempDir) -> SocketAddr {
+    let running = start_with(dir, ServerConfig::default()).await;
+    std::mem::forget(running.stop); // never send the stop signal; the test runtime ends instead
+    running.address
 }
 
 /// Sends `request` and reads exactly `expected.len()` bytes back.
@@ -32,6 +56,13 @@ async fn exchange(stream: &mut TcpStream, request: &[u8], expected: &[u8]) {
         "reply to {:?}",
         String::from_utf8_lossy(request)
     );
+}
+
+/// Everything the server sends until it closes the connection.
+async fn read_until_closed(stream: &mut TcpStream) -> String {
+    let mut reply = Vec::new();
+    stream.read_to_end(&mut reply).await.unwrap();
+    String::from_utf8_lossy(&reply).into_owned()
 }
 
 #[tokio::test]
@@ -94,9 +125,10 @@ async fn a_malformed_request_gets_an_error_and_the_connection_closes() {
     let mut client = TcpStream::connect(start(&dir).await).await.unwrap();
 
     client.write_all(b"*1\r\n:oops\r\n").await.unwrap();
-    let mut reply = Vec::new();
-    client.read_to_end(&mut reply).await.unwrap(); // returns once the server closes
-    assert_eq!(reply, b"-ERR Protocol error: expected a bulk string\r\n");
+    assert_eq!(
+        read_until_closed(&mut client).await,
+        "-ERR Protocol error: expected a bulk string\r\n"
+    );
 }
 
 #[tokio::test]
@@ -108,4 +140,108 @@ async fn data_survives_a_server_restart() {
     } // the engine is dropped here, releasing the folder's lock
     let mut client = TcpStream::connect(start(&dir).await).await.unwrap();
     exchange(&mut client, b"GET k\r\n", b"$4\r\nkept\r\n").await;
+}
+
+#[tokio::test]
+async fn a_web_page_cannot_smuggle_commands_through_a_browser() {
+    let dir = tempfile::tempdir().unwrap();
+    let address = start(&dir).await;
+
+    // What a browser sends when a malicious page posts a form to localhost, with commands in the body.
+    let mut browser = TcpStream::connect(address).await.unwrap();
+    browser
+        .write_all(b"POST / HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\nSET evil 1\r\n")
+        .await
+        .unwrap();
+    assert_eq!(
+        read_until_closed(&mut browser).await,
+        "-ERR Protocol error: this is not an HTTP server\r\n"
+    );
+
+    let mut client = TcpStream::connect(address).await.unwrap();
+    exchange(&mut client, b"GET evil\r\n", b"$-1\r\n").await;
+}
+
+#[tokio::test]
+async fn an_oversized_request_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = ServerConfig {
+        max_request_bytes: 64,
+        ..ServerConfig::default()
+    };
+    let running = start_with(&dir, config).await;
+    let mut client = TcpStream::connect(running.address).await.unwrap();
+
+    let mut request = b"*3\r\n$3\r\nSET\r\n$1\r\nk\r\n$1000\r\n".to_vec();
+    request.extend_from_slice(&[b'x'; 100]); // never finished: the server must not wait for the rest
+    client.write_all(&request).await.unwrap();
+    assert_eq!(
+        read_until_closed(&mut client).await,
+        "-ERR Protocol error: request too large\r\n"
+    );
+}
+
+#[tokio::test]
+async fn clients_beyond_the_limit_are_turned_away() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = ServerConfig {
+        max_connections: 1,
+        ..ServerConfig::default()
+    };
+    let running = start_with(&dir, config).await;
+
+    let mut first = TcpStream::connect(running.address).await.unwrap();
+    exchange(&mut first, b"PING\r\n", b"+PONG\r\n").await;
+
+    let mut second = TcpStream::connect(running.address).await.unwrap();
+    assert_eq!(
+        read_until_closed(&mut second).await,
+        "-ERR max number of clients reached\r\n"
+    );
+
+    drop(first); // frees the place
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    let mut third = TcpStream::connect(running.address).await.unwrap();
+    exchange(&mut third, b"PING\r\n", b"+PONG\r\n").await;
+}
+
+#[tokio::test]
+async fn a_quiet_client_is_disconnected() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = ServerConfig {
+        idle_timeout: Duration::from_millis(200),
+        ..ServerConfig::default()
+    };
+    let running = start_with(&dir, config).await;
+    let mut client = TcpStream::connect(running.address).await.unwrap();
+
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    assert_eq!(
+        read_until_closed(&mut client).await,
+        "",
+        "closed without a word"
+    );
+}
+
+#[tokio::test]
+async fn shutdown_finishes_cleanly_and_keeps_acknowledged_writes() {
+    let dir = tempfile::tempdir().unwrap();
+    let running = start_with(&dir, ServerConfig::default()).await;
+    let mut client = TcpStream::connect(running.address).await.unwrap();
+    exchange(&mut client, b"SET k before-shutdown\r\n", b"+OK\r\n").await;
+
+    running.stop.send(()).unwrap();
+    tokio::time::timeout(Duration::from_secs(5), running.task)
+        .await
+        .expect("the server stops promptly")
+        .unwrap();
+    assert_eq!(
+        read_until_closed(&mut client).await,
+        "",
+        "open connections are closed"
+    );
+
+    // The engine was dropped with the server, so the folder can be opened again.
+    let engine = Engine::open(dir.path(), LogConfig::default()).unwrap().0;
+    assert_eq!(engine.get(b"k").unwrap(), Some(b"before-shutdown".to_vec()));
 }

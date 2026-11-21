@@ -8,8 +8,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
 
-use emberkv_server::resp::ProtocolLimits;
-use emberkv_server::server::serve;
+use emberkv_server::server::{ServerConfig, serve};
 use emberkv_storage::engine::Engine;
 use emberkv_storage::log::LogConfig;
 use tokio::net::TcpListener;
@@ -40,6 +39,27 @@ fn parse_options(mut args: impl Iterator<Item = String>) -> Result<Options, Stri
         }
     }
     Ok(options)
+}
+
+/// Completes when the program is asked to stop: Ctrl+C, or SIGTERM from `kill` or a service manager.
+async fn shutdown_signal() {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{SignalKind, signal};
+        let Ok(mut terminate) = signal(SignalKind::terminate()) else {
+            let _ = tokio::signal::ctrl_c().await;
+            return;
+        };
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {}
+            _ = terminate.recv() => {}
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = tokio::signal::ctrl_c().await;
+    }
+    eprintln!("emberkv: stopping, letting open connections finish");
 }
 
 fn version() -> &'static str {
@@ -81,10 +101,14 @@ async fn main() -> ExitCode {
     };
     eprintln!("emberkv: listening on 127.0.0.1:{}", options.port);
 
-    tokio::select! {
-        _ = serve(listener, Arc::new(engine), ProtocolLimits::default()) => {}
-        _ = tokio::signal::ctrl_c() => eprintln!("emberkv: stopping"),
-    }
+    serve(
+        listener,
+        Arc::new(engine),
+        ServerConfig::default(),
+        shutdown_signal(),
+    )
+    .await;
+    eprintln!("emberkv: stopped cleanly");
     ExitCode::SUCCESS
 }
 

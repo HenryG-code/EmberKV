@@ -76,6 +76,9 @@ pub enum ProtocolError {
     /// A line longer than allowed with no line ending yet.
     #[error("line too long")]
     LineTooLong,
+    /// The request starts like HTTP, so it came from a web browser, possibly sent by a malicious page.
+    #[error("this is not an HTTP server")]
+    LooksLikeHttp,
 }
 
 /// Parses one command from the start of `buf`.
@@ -154,6 +157,14 @@ fn parse_inline(buf: &[u8], limits: &ProtocolLimits) -> Result<Parsed, ProtocolE
         .collect();
     if args.len() > limits.args {
         return Err(ProtocolError::TooManyArgs);
+    }
+    // A web page can make a browser send an HTTP request to localhost, with Redis commands hidden in
+    // its body (cross-protocol scripting). No Redis client sends these words, so close at once,
+    // before any line of the body is run. Redis itself uses the same check.
+    if let Some(first) = args.first()
+        && (first.eq_ignore_ascii_case(b"POST") || first.eq_ignore_ascii_case(b"Host:"))
+    {
+        return Err(ProtocolError::LooksLikeHttp);
     }
     Ok(Parsed::Command {
         args,
@@ -296,6 +307,22 @@ mod tests {
         assert_eq!(
             parse(b"*0000000000000000000000000", &small),
             Err(ProtocolError::LineTooLong)
+        );
+    }
+
+    #[test]
+    fn requests_from_a_web_browser_are_refused() {
+        assert_eq!(
+            parse(b"POST / HTTP/1.1\r\n", &limits()),
+            Err(ProtocolError::LooksLikeHttp)
+        );
+        assert_eq!(
+            parse(b"Host: 127.0.0.1:7379\r\n", &limits()),
+            Err(ProtocolError::LooksLikeHttp)
+        );
+        assert_eq!(
+            parse(b"host: x\n", &limits()),
+            Err(ProtocolError::LooksLikeHttp)
         );
     }
 
