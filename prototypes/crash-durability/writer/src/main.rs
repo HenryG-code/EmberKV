@@ -4,7 +4,11 @@ use std::time::Instant;                              // NEW: a high-resolution s
 
 fn append_record(file: &mut File, n: u64, sync: bool) -> io::Result<()> {
     let payload = n.to_string().into_bytes();
-    let len_bytes = (payload.len() as u32).to_le_bytes();
+    // `as u32` would silently keep only the low 32 bits of a huge length, and the record would still
+    // look valid. try_from fails instead, so a length that does not fit can never be written.
+    let len = u32::try_from(payload.len())
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "payload longer than u32::MAX"))?;
+    let len_bytes = len.to_le_bytes();
 
     let header_crc = crc32c::crc32c(&len_bytes);
     let body_crc = crc32c::crc32c(&payload);
@@ -35,6 +39,9 @@ fn main() -> io::Result<()> {
     let quiet = args.iter().any(|a| a == "--quiet");
 
     let mut file = OpenOptions::new().create(true).append(true).open("data.log")?;
+    // sync_all on the file makes its contents durable, but the file's NAME lives in the folder.
+    // Flush the folder too, so a newly created data.log cannot disappear after a power cut.
+    File::open(".")?.sync_all()?;
 
     let start = Instant::now();
     for n in 1..=count {
