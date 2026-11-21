@@ -9,6 +9,8 @@ filesystem used.
 - [ ] A torn final record, produced by killing mid-write and by truncating the file deliberately, is
       detected by its checksum and discarded, and the records before it are intact
 - [ ] A single flipped bit inside an earlier record is detected, and startup refuses to continue
+- [ ] A flipped bit in a length field is reported as corruption, not as a torn tail, so recovery never
+      truncates valid records after it
 - [ ] Writing to a temporary file, flushing, renaming and flushing the directory is shown to leave
       either the old file or the new one after a crash, never a missing or empty file
 - [ ] Throughput measured with a flush on every write and without, so the cost of durability is known

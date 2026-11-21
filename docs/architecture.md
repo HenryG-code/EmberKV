@@ -79,11 +79,21 @@ practical.
 
 | Field | Size | Purpose |
 |---|---|---|
-| Checksum | 4 bytes | CRC-32C of every field after it (see [research](research.md#3-checksums-crc-32c-not-crc-32)) |
+| Header checksum | 4 bytes | CRC-32C of the two length fields, so a damaged length is caught before it is trusted |
 | Key length | 4 bytes | Bounded by the configured key limit |
 | Value length | 4 bytes | A reserved value marks a deletion (tombstone) |
+| Body checksum | 4 bytes | CRC-32C of key and value (see [research](research.md#3-checksums-crc-32c-not-crc-32)) |
 | Key | variable | Raw bytes |
 | Value | variable | Raw bytes, absent for a deletion |
+
+**Why two checksums:** a reader must use the length fields to know how many bytes to read. If one
+checksum covered the whole record, a single flipped bit in a length could make the reader run past
+the end of the file and report a harmless torn tail, and recovery would then cut off every good record
+after it. This was found by experiment in the feasibility prototype. Checking the header first means a
+damaged length is reported as corruption, never mistaken for a crash.
+
+**Recovery rule:** a torn tail is only accepted when it is genuinely at the end of the newest segment and
+no shorter than a damaged write could be. Anything that looks torn elsewhere is treated as corruption.
 
 **Segments:** the log is split into numbered files. Exactly one, the newest, is open for appends. When
 it reaches a size limit it is flushed, closed and becomes read-only, and a new one starts.
