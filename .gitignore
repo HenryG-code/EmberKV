@@ -1,0 +1,32 @@
+# Environment and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# Rust build output
+target/
+**/*.rs.bk
+
+# Database files created by runs and tests, never commit
+data/
+*.wal
+*.sst
+*.emberkv
+crash-runs/
+
+# Logs, coverage and benchmark scratch output
+*.log
+logs/
+coverage/
+*.profraw
+criterion/
+
+# Editors and operating systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+.claude/settings.local.json
