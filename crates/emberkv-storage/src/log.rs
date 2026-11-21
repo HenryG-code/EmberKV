@@ -9,7 +9,7 @@ use thiserror::Error;
 
 use crate::record::{Limits, Record};
 use crate::recovery::{RecoveryError, RecoveryReport, recover};
-use crate::segment::{Location, SegmentWriter, WriteError, segment_file_name};
+use crate::segment::{Location, SegmentWriter, WriteError, segment_file_name, sync_dir};
 
 /// Settings for a [`Log`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -67,7 +67,7 @@ impl Log {
         config: LogConfig,
         on_record: impl FnMut(Record, Location),
     ) -> Result<(Log, RecoveryReport), OpenError> {
-        fs::create_dir_all(dir)?;
+        create_dir_durably(dir)?;
         let lock = OpenOptions::new()
             .create(true)
             .truncate(false)
@@ -145,10 +145,34 @@ impl Log {
     /// old segment torn with a newer segment after it, which recovery rightly refuses.
     fn roll_over(&mut self) -> Result<(), WriteError> {
         self.active.sync()?;
-        let next = self.active.id() + 1;
+        let next = self
+            .active
+            .id()
+            .checked_add(1)
+            .ok_or_else(|| io::Error::other("no segment numbers left"))?;
         self.active = SegmentWriter::create(&self.dir, next, self.config.limits)?;
         Ok(())
     }
+}
+
+/// Creates `dir` and any missing parent folders, flushing each new folder's parent so the new name
+/// is durable. `fs::create_dir_all` alone would leave a brand-new data folder able to vanish after a
+/// power cut, along with every acknowledged write inside it.
+fn create_dir_durably(dir: &Path) -> io::Result<()> {
+    if dir.is_dir() {
+        return Ok(());
+    }
+    let parent = match dir.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => parent,
+        _ => Path::new("."),
+    };
+    create_dir_durably(parent)?;
+    match fs::create_dir(dir) {
+        Ok(()) => {}
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => return Ok(()),
+        Err(error) => return Err(error),
+    }
+    sync_dir(parent)
 }
 
 #[cfg(test)]
@@ -240,5 +264,19 @@ mod tests {
 
         drop(first);
         assert!(Log::open(dir.path(), LogConfig::default(), |_, _| {}).is_ok());
+    }
+
+    #[test]
+    fn nested_data_folders_are_created_and_existing_ones_reused() {
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("a").join("b").join("data");
+        let (mut log, _) = open(&data, LogConfig::default());
+        log.append(&put(b"k", b"v")).unwrap();
+        log.sync().unwrap();
+        drop(log);
+
+        assert!(data.join("000001.log").exists());
+        let (_, seen) = open(&data, LogConfig::default());
+        assert_eq!(seen.len(), 1, "an existing folder is opened, not replaced");
     }
 }
