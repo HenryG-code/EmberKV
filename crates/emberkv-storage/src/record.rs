@@ -46,6 +46,24 @@ pub struct Limits {
     pub max_value: u32,
 }
 
+impl Limits {
+    /// The largest key and value the on-disk format is ever read with, whatever the configuration.
+    ///
+    /// Configured limits decide what new writes may store. Reading uses these fixed maximums instead,
+    /// so lowering a configured limit never makes existing data unreadable, while every allocation
+    /// during reading stays bounded.
+    pub const FORMAT_MAX: Limits = Limits {
+        max_key: 64 * 1024,
+        max_value: 64 * 1024 * 1024,
+    };
+
+    /// Whether these limits fit inside [`Limits::FORMAT_MAX`].
+    #[must_use]
+    pub fn within_format(self) -> bool {
+        self.max_key <= Self::FORMAT_MAX.max_key && self.max_value <= Self::FORMAT_MAX.max_value
+    }
+}
+
 impl Default for Limits {
     fn default() -> Self {
         Limits {
