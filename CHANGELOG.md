@@ -18,6 +18,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Rust 1.100.0, Clippy pedantic lints, `make test` and `make lint`, and CI: format, lint and tests,
   `cargo deny` for licences and advisories, and a Gitleaks secret scan. ADR 0005 (dependency policy).
 
+- `emberkv-storage` record format: `Record` (put and tombstone), `encode` with size limits, and `decode`
+  returning a record, a clean end, a torn tail or classified corruption, with every length checked
+  before any allocation. Unit tests, property tests and a fuzz target.
+
 ### Fixed
 
 - A damaged length field was mistaken for a torn tail, which would have discarded valid records. Records
