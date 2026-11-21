@@ -4,6 +4,7 @@
 
 //! [`record`] is the on-disk record format; [`segment`] writes records to numbered log files.
 
+pub mod log;
 pub mod record;
 pub mod recovery;
 pub mod segment;
