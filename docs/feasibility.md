@@ -4,8 +4,9 @@
 no networking and no index beyond a simple map. Run on Linux, in WSL2 or Ubuntu, and record the
 filesystem used.
 
-- [ ] Records appended and flushed one at a time survive `kill -9` at random moments, across at least
-      hundreds of runs, with every acknowledged record present afterwards
+- [x] Records appended and flushed one at a time survive `kill -9` at random moments, across at least
+      hundreds of runs, with every acknowledged record present afterwards: 500 of 500 on ext4 in WSL2,
+      process crashes only, see [results](benchmarks/2026-11-21-slice0-wsl2.md)
 - [ ] A torn final record, produced by killing mid-write and by truncating the file deliberately, is
       detected by its checksum and discarded, and the records before it are intact
 - [ ] A single flipped bit inside an earlier record is detected, and startup refuses to continue
