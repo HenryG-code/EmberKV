@@ -1,9 +1,13 @@
 //! EmberKV's storage engine: the append-only log, crash recovery and the in-memory index.
 //!
 //! Plain synchronous code with no networking, so it can be tested and fuzzed on its own.
-//! Slice 2 adds the record format in [`record`].
 
+//! [`record`] is the on-disk record format; [`segment`] writes records to numbered log files.
+
+pub mod log;
 pub mod record;
+pub mod recovery;
+pub mod segment;
 
 /// Version of the on-disk record format this crate reads and writes.
 pub const FORMAT_VERSION: u32 = 1;
