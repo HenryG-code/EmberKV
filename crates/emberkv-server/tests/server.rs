@@ -245,3 +245,29 @@ async fn shutdown_finishes_cleanly_and_keeps_acknowledged_writes() {
     let engine = Engine::open(dir.path(), LogConfig::default()).unwrap().0;
     assert_eq!(engine.get(b"k").unwrap(), Some(b"before-shutdown".to_vec()));
 }
+
+#[tokio::test]
+async fn a_hundred_clients_at_once_each_read_back_their_own_writes() {
+    let dir = tempfile::tempdir().unwrap();
+    let address = start(&dir).await;
+
+    let mut clients = tokio::task::JoinSet::new();
+    for id in 0..100 {
+        clients.spawn(async move {
+            let mut client = TcpStream::connect(address).await.unwrap();
+            let set = format!("SET key{id} value{id}\r\n");
+            exchange(&mut client, set.as_bytes(), b"+OK\r\n").await;
+            let value = format!("value{id}");
+            let expected = format!("${}\r\n{value}\r\n", value.len());
+            exchange(
+                &mut client,
+                format!("GET key{id}\r\n").as_bytes(),
+                expected.as_bytes(),
+            )
+            .await;
+        });
+    }
+    while let Some(result) = clients.join_next().await {
+        result.unwrap(); // a failed assertion in any client fails the test
+    }
+}

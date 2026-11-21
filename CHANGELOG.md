@@ -32,6 +32,11 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   every record. A model-based test compares it with a `BTreeMap` through random operations and
   restarts. ADR 0003 (one writer behind a lock).
 
+- `emberkv` server speaking a subset of RESP2 on 127.0.0.1: `PING`, `GET`, `SET`, `DEL`, `EXISTS`, inline
+  commands and pipelining. Limits on connections, request size and idle time; refuses requests from web
+  browsers; graceful shutdown on Ctrl+C or SIGTERM. `emberkv-cli` client, `make dev-local` and
+  `make stop-dev`, and a parser fuzz target. ADR 0004 (wire protocol).
+
 ### Fixed
 
 - A new data folder's name was not flushed, so after a power cut the whole folder could vanish. Its

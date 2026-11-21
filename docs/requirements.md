@@ -54,7 +54,8 @@ power loss on hardware that ignores flush requests.
       (recovery tests)
 - [ ] A crash at any step of compaction leaves every live key readable after restart
 - [ ] Oversized keys, values and requests are rejected without memory growing beyond the documented bound
-- [ ] Several concurrent clients writing different keys all read back their own acknowledged values
+- [x] Several concurrent clients writing different keys all read back their own acknowledged values
+      (100 clients over real sockets, `tests/server.rs`)
 
 Proof demo: a script kills the server mid-write in a loop, restarts it each time, and checks every
 acknowledged write, printing the number of runs and the number of lost writes, which must be zero.

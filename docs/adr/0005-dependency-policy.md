@@ -39,6 +39,8 @@ random operations and a loop do the same job with no extra crate.
 | `thiserror` | 2 | storage | Typed errors without hand-written boilerplate |
 | `proptest` | 2 | tests only | Property tests, and the model-based engine test (slice 4) |
 | `tempfile` | 3 | tests only | Temporary folders that are removed after each test |
+| `tokio` | 5 | server | Async TCP server: connections, timers, signals, semaphore, channels. Only the features used are enabled |
+| `libfuzzer-sys` | 2, 5 | fuzz targets only | Coverage-guided fuzzing; in separate workspaces that never ship |
 | `tokio` | 5 | server | TCP server, channels and signals |
 | `tracing`, `tracing-subscriber` | 7 | server | Structured logs |
 
